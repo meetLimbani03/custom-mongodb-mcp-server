@@ -572,6 +572,33 @@ describe("ExportsManager unit test", () => {
             expect(manager.availableExports).toEqual([]);
             expect(await fileExists(exportPath)).toEqual(false);
         });
+
+        it("should not cleanup exports written to explicit outputPath", async () => {
+            const { exportName, uniqueExportsId } = getExportNameAndPath();
+            const explicitOutputPath = path.join(exportsPath, `custom-${Date.now()}.json`);
+            const manager = ExportsManager.init(
+                {
+                    ...exportsManagerConfig,
+                    exportTimeoutMs: 100,
+                    exportCleanupIntervalMs: 50,
+                },
+                new CompositeLogger(),
+                uniqueExportsId
+            );
+            await manager.createJSONExport({
+                input: cursor,
+                exportName,
+                exportTitle: "Some export",
+                jsonExportFormat: "relaxed",
+                outputPath: explicitOutputPath,
+            });
+            await cursorCloseNotification;
+
+            expect(await fileExists(explicitOutputPath)).toEqual(true);
+            await timeout(200);
+            expect(await fileExists(explicitOutputPath)).toEqual(true);
+            await fs.rm(explicitOutputPath, { force: true });
+        });
     });
 
     describe("#close", () => {

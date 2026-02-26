@@ -69,6 +69,27 @@ describeWithMongoDB(
                     required: false,
                 },
                 {
+                    name: "outputPath",
+                    description:
+                        "Absolute or relative output file path where the exported JSON should be written. If omitted, server-managed exportsPath is used.",
+                    type: "string",
+                    required: false,
+                },
+                {
+                    name: "humanize",
+                    description:
+                        "Optional ID-to-details mapping configuration. Lookups are appended as aggregation stages before writing the export.",
+                    type: "object",
+                    required: false,
+                },
+                {
+                    name: "preset",
+                    description:
+                        "Optional reusable humanization preset name. Currently supported: software_review_humanized",
+                    type: "string",
+                    required: false,
+                },
+                {
                     name: "exportTarget",
                     type: "array",
                     description: "The export target along with its arguments.",
@@ -85,6 +106,9 @@ describeWithMongoDB(
             { database: "test", collection: "bar", projection: "name" },
             { database: "test", collection: "bar", limit: "10" },
             { database: "test", collection: "bar", sort: [], limit: 10 },
+            { database: "test", collection: "bar", outputPath: 12 },
+            { database: "test", collection: "bar", preset: 12 },
+            { database: "test", collection: "bar", humanize: "bad-input" },
         ]);
 
         beforeEach(async () => {
@@ -210,6 +234,109 @@ describeWithMongoDB(
                 >[];
                 expect(exportedContent).toHaveLength(1);
                 expect(exportedContent[0]?.name).toEqual("foo");
+            });
+
+            it("should write export to a user-provided outputPath", async function () {
+                await integration.connectMcpClient();
+                const customOutputPath = path.join(
+                    path.dirname(userConfig.exportsPath),
+                    `custom-export-${Date.now()}.json`
+                );
+
+                const response = await integration.mcpClient().callTool({
+                    name: "export",
+                    arguments: {
+                        database: integration.randomDbName(),
+                        collection: "foo",
+                        exportTitle: `Export for ${integration.randomDbName()}.foo`,
+                        outputPath: customOutputPath,
+                        exportTarget: [
+                            {
+                                name: "find",
+                                arguments: {
+                                    filter: {},
+                                    limit: 1,
+                                },
+                            },
+                        ],
+                    },
+                });
+                const content = response.content as CallToolResult["content"];
+                const exportURI = contentWithResourceURILink(content)?.uri as string;
+                await resourceChangedNotification(integration.mcpClient(), exportURI);
+
+                const localPathPart = contentWithExportPath(content);
+                expect(localPathPart).toBeDefined();
+                const [, localPath] = /"(.*)"/.exec(String(localPathPart?.text)) ?? [];
+                expect(localPath).toEqual(customOutputPath);
+
+                const exportedContent = JSON.parse(await fs.readFile(customOutputPath, "utf8")) as Record<
+                    string,
+                    unknown
+                >[];
+                expect(exportedContent).toHaveLength(1);
+                await fs.rm(customOutputPath, { force: true });
+            });
+
+            it("should support preset and humanize config together", async () => {
+                const mongoClient = integration.mongoClient();
+                const dbName = integration.randomDbName();
+                const softwareId = "soft-1";
+                await mongoClient
+                    .db(dbName)
+                    .collection("reviews")
+                    .insertOne({ review: "great", software_id: softwareId });
+                await mongoClient
+                    .db(dbName)
+                    .collection("softwares")
+                    .insertOne({ _id: softwareId, software_name: "Alpha", slug: "alpha" });
+
+                const response = await integration.mcpClient().callTool({
+                    name: "export",
+                    arguments: {
+                        database: dbName,
+                        collection: "reviews",
+                        exportTitle: `Export for ${dbName}.reviews`,
+                        preset: "software_review_humanized",
+                        humanize: {
+                            lookups: [
+                                {
+                                    localField: "software_id",
+                                    fromCollection: "softwares",
+                                    foreignField: "_id",
+                                    asField: "software_custom",
+                                    select: ["software_name"],
+                                },
+                            ],
+                            dropRawIdFields: true,
+                        },
+                        exportTarget: [
+                            {
+                                name: "find",
+                                arguments: {
+                                    filter: {},
+                                    limit: 1,
+                                },
+                            },
+                        ],
+                    },
+                });
+                const content = response.content as CallToolResult["content"];
+                const exportURI = contentWithResourceURILink(content)?.uri as string;
+                await resourceChangedNotification(integration.mcpClient(), exportURI);
+
+                const localPathPart = contentWithExportPath(content);
+                const [, localPath] = /"(.*)"/.exec(String(localPathPart?.text)) ?? [];
+                const exportedContent = JSON.parse(await fs.readFile(localPath as string, "utf8")) as Record<
+                    string,
+                    unknown
+                >[];
+                expect(exportedContent[0]).toMatchObject({
+                    review: "great",
+                    software: [{ software_name: "Alpha", slug: "alpha" }],
+                    software_custom: [{ software_name: "Alpha" }],
+                });
+                expect(exportedContent[0]?.software_id).toBeUndefined();
             });
 
             it("should export results limited to the provided limit", async function () {

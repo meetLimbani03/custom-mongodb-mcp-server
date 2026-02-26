@@ -22,6 +22,7 @@ interface CommonExportData {
     exportTitle: string;
     exportURI: string;
     exportPath: string;
+    cleanupOnExpire: boolean;
 }
 
 interface ReadyExport extends CommonExportData {
@@ -159,11 +160,13 @@ export class ExportsManager extends EventEmitter<ExportsManagerEvents> {
         exportName,
         exportTitle,
         jsonExportFormat,
+        outputPath,
     }: {
         input: FindCursor | AggregationCursor;
         exportName: string;
         exportTitle: string;
         jsonExportFormat: JSONExportFormat;
+        outputPath?: string;
     }): Promise<AvailableExport> {
         try {
             this.assertIsNotShuttingDown();
@@ -174,12 +177,15 @@ export class ExportsManager extends EventEmitter<ExportsManagerEvents> {
                 );
             }
             const exportURI = `exported-data://${encodeURIComponent(exportNameWithExtension)}`;
-            const exportFilePath = path.join(this.exportsDirectoryPath, exportNameWithExtension);
+            const exportFilePath = outputPath
+                ? path.resolve(outputPath)
+                : path.join(this.exportsDirectoryPath, exportNameWithExtension);
             const inProgressExport: InProgressExport = (this.storedExports[exportNameWithExtension] = {
                 exportName: exportNameWithExtension,
                 exportTitle,
                 exportPath: exportFilePath,
                 exportURI: exportURI,
+                cleanupOnExpire: !outputPath,
                 exportStatus: "in-progress",
             });
 
@@ -208,7 +214,7 @@ export class ExportsManager extends EventEmitter<ExportsManagerEvents> {
             let pipeSuccessful = false;
             let docsTransformed = 0;
             try {
-                await fs.mkdir(this.exportsDirectoryPath, { recursive: true });
+                await fs.mkdir(path.dirname(inProgressExport.exportPath), { recursive: true });
                 const outputStream = createWriteStream(inProgressExport.exportPath);
                 const ejsonTransform = this.docToEJSONStream(this.getEJSONOptionsForFormat(jsonExportFormat));
                 await pipeline([input.stream(), ejsonTransform, outputStream], {
@@ -306,6 +312,7 @@ export class ExportsManager extends EventEmitter<ExportsManagerEvents> {
             for (const expiredExport of Object.values(this.storedExports)) {
                 if (
                     expiredExport.exportStatus === "ready" &&
+                    expiredExport.cleanupOnExpire &&
                     isExportExpired(expiredExport.exportCreatedAt, this.config.exportTimeoutMs)
                 ) {
                     exportsForCleanup.push(expiredExport);
