@@ -39,7 +39,7 @@ export const defaultDriverOptions: ConnectionInfo["driverOptions"] = {
     writeConcern: {
         w: "majority",
     },
-    timeoutMS: 30_000,
+    serverSelectionTimeoutMS: 30_000,
     proxy: { useEnvironmentVariableProxies: true },
     applyProxyToOIDC: true,
 };

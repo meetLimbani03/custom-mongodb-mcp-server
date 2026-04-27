@@ -250,14 +250,15 @@ Use 'filter' for additional fields to filter on. At least one 'vector' or 'autoE
             case "vectorSearch":
                 {
                     await this.session.assertSearchSupported();
-                    indexes = await provider.createSearchIndexes(database, collection, [
-                        {
-                            name,
-                            definition: {
-                                fields: definition.fields,
-                            },
-                            type: "vectorSearch",
+                    const searchIndexSpec = {
+                        name,
+                        definition: {
+                            fields: definition.fields,
                         },
+                        type: "vectorSearch",
+                    } as unknown as Parameters<typeof provider.createSearchIndexes>[2][number];
+                    indexes = await provider.createSearchIndexes(database, collection, [
+                        searchIndexSpec,
                     ]);
 
                     responseClarification =
@@ -271,16 +272,17 @@ Use 'filter' for additional fields to filter on. At least one 'vector' or 'autoE
             case "search":
                 {
                     await this.session.assertSearchSupported();
-                    indexes = await provider.createSearchIndexes(database, collection, [
-                        {
-                            name,
-                            definition: {
-                                mappings: definition.mappings,
-                                analyzer: definition.analyzer,
-                                numPartitions: definition.numPartitions,
-                            },
-                            type: "search",
+                    const searchIndexSpec = {
+                        name,
+                        definition: {
+                            mappings: definition.mappings,
+                            analyzer: definition.analyzer,
+                            numPartitions: definition.numPartitions,
                         },
+                        type: "search",
+                    } as unknown as Parameters<typeof provider.createSearchIndexes>[2][number];
+                    indexes = await provider.createSearchIndexes(database, collection, [
+                        searchIndexSpec,
                     ]);
 
                     responseClarification =

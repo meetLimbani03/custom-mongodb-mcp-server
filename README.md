@@ -84,6 +84,26 @@ You can pass your connection string via environment variables, make sure to use 
 
 NOTE: The connection string can be configured to connect to any MongoDB cluster, whether it's a local instance or an Atlas cluster.
 
+#### Legacy MongoDB 4.0 Compatibility
+
+If you are running this server against an older MongoDB deployment that reports `maximum wire version 7` (MongoDB 4.0 era), the published `@mongosh/service-provider-node-driver` stack will still pull a newer MongoDB driver by default. In this repo we keep a repo-local compatibility patch script that removes the newer-driver-only runtime options before `MongoClient` is created.
+
+Run it after `pnpm install` and any time you reinstall dependencies:
+
+```bash
+pnpm run patch:legacy-mongo5-compat
+```
+
+Recommended local workflow for this compatibility mode:
+
+```bash
+pnpm install
+pnpm run patch:legacy-mongo5-compat
+pnpm run build
+```
+
+The patch is idempotent. If it has already been applied, the script exits cleanly without changing files.
+
 #### Option 2: Atlas API Credentials
 
 Use your Atlas API Service Accounts credentials. Must follow all the steps in [Atlas API Access](#atlas-api-access) section.
